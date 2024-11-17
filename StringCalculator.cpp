@@ -1,244 +1,217 @@
 /**
- * @file StringCalculator.cpp
- * @brief Mathematical Expression Calculator
- * 
- * This program evaluates mathematical expressions provided by the user.
- * It supports basic arithmetic operations, as well as trigonometric and exponential functions.
- * 
+ * @file VerboseStringCalculator.cpp
+ * @brief Extended Mathematical Expression Calculator
+ *
+ * A comprehensive and verbose implementation of a mathematical expression calculator.
+ * This program demonstrates advanced C++ concepts, including class design, templates, 
+ * advanced error handling, and modular programming.
+ *
  * Universitatea Tehnica a Moldovei
- * Lab Work No. 1 - Computer Programming. Basics of C++ Language.
- * Date: 18.09.2021
- * Author: Vladislav Cernega
- * Reviewed by: Dumitru Prijilevschi
+ * Written by: Vladislav Cernega
  */
 
 #include <iostream>
 #include <stack>
+#include <string>
+#include <unordered_map>
 #include <cmath>
+#include <functional>
+#include <sstream>
+#include <stdexcept>
+#include <vector>
+#include <iomanip>
+#include <type_traits>
 
-using namespace std;
+namespace MathCalc {
 
-// Constants
-const double PI = acos(-1.0);
+    /**
+     * @brief Mathematical constants and utility functions
+     */
+    namespace Constants {
+        constexpr double PI = std::acos(-1.0);       ///< Value of π (pi)
+        constexpr double E = std::exp(1.0);         ///< Value of Euler's number e
 
-// Function to round a double to 7 decimal places
-double roundTo7Decimal(double value) {
-    return round(value * 1e7) / 1e7;
-}
+        /**
+         * @brief Utility function to round a double value to specified decimal places.
+         * @tparam Precision Number of decimal places to round to.
+         * @param value Input double value.
+         * @return Rounded value.
+         */
+        template <std::size_t Precision>
+        constexpr double roundTo(double value) {
+            static_assert(Precision > 0, "Precision must be greater than zero.");
+            constexpr double multiplier = std::pow(10.0, Precision);
+            return std::round(value * multiplier) / multiplier;
+        }
+    }
 
-// Struct to represent a mathematical digit or operation
-struct Digit {
-    char type;    // '0' for digits, '+-/*^' for operations, and 'sctgea' for functions
-    double value; // Value of the digit or result of the operation
-};
+    /**
+     * @brief Token types used in expression parsing.
+     */
+    enum class TokenType {
+        Number,       ///< A numeric value
+        Operator,     ///< An arithmetic operator (+, -, *, /, ^)
+        Function,     ///< A mathematical function (sin, cos, etc.)
+        Parenthesis   ///< Parentheses (either '(' or ')')
+    };
 
-// Function to execute mathematical operations
-bool executeMathOperation(stack<Digit>& numbers, stack<Digit>& operations, Digit& item);
+    /**
+     * @brief Token structure representing a single entity in the expression.
+     */
+    struct Token {
+        TokenType type;     ///< Type of the token
+        std::string value;  ///< Literal value of the token
+    };
 
-// Function to get the priority of a mathematical operation
-int getOperationPriority(char operation);
+    /**
+     * @brief Exception class for handling expression errors.
+     */
+    class ExpressionError : public std::runtime_error {
+    public:
+        explicit ExpressionError(const std::string& message)
+            : std::runtime_error("Expression Error: " + message) {}
+    };
+
+    /**
+     * @brief Class to evaluate mathematical expressions.
+     */
+    class Calculator {
+    private:
+        std::stack<double> values_;          ///< Stack for numeric values
+        std::stack<Token> operators_;        ///< Stack for operators and functions
+        std::unordered_map<std::string, std::function<double(double)>> functions_; ///< Supported functions
+
+        /**
+         * @brief Initializes the supported functions.
+         */
+        void initializeFunctions() {
+            functions_ = {
+                {"sin", [](double x) { return Constants::roundTo<7>(std::sin(x)); }},
+                {"cos", [](double x) { return Constants::roundTo<7>(std::cos(x)); }},
+                {"tan", [](double x) { 
+                    if (Constants::roundTo<7>(std::cos(x)) == 0) 
+                        throw ExpressionError("Undefined tangent (division by zero).");
+                    return Constants::roundTo<7>(std::tan(x)); 
+                }},
+                {"exp", [](double x) { return std::exp(x); }},
+                {"log", [](double x) { 
+                    if (x <= 0) throw ExpressionError("Logarithm domain error (non-positive argument).");
+                    return std::log(x); 
+                }},
+                {"sqrt", [](double x) { 
+                    if (x < 0) throw ExpressionError("Square root of negative number.");
+                    return std::sqrt(x); 
+                }},
+                {"abs", [](double x) { return std::abs(x); }}
+            };
+        }
+
+        /**
+         * @brief Determines the precedence of an operator.
+         * @param op Operator character.
+         * @return Integer representing precedence (higher is stronger).
+         */
+        int getPrecedence(const std::string& op) const {
+            if (op == "+" || op == "-") return 1;
+            if (op == "*" || op == "/") return 2;
+            if (op == "^") return 3;
+            if (functions_.count(op)) return 4; // Functions have highest precedence
+            return 0; // Parentheses or unknowns
+        }
+
+        /**
+         * @brief Executes a single operation.
+         * Pops operands and operator from the stacks, computes the result, and pushes it back.
+         */
+        void executeOperation() {
+            if (operators_.empty()) throw ExpressionError("Operator stack underflow.");
+
+            auto op = operators_.top();
+            operators_.pop();
+
+            if (functions_.count(op.value)) {
+                if (values_.empty()) throw ExpressionError("Missing operand for function " + op.value);
+                double arg = values_.top();
+                values_.pop();
+                values_.push(functions_.at(op.value)(arg));
+                return;
+            }
+
+            if (values_.size() < 2) throw ExpressionError("Missing operands for operator " + op.value);
+
+            double b = values_.top(); values_.pop();
+            double a = values_.top(); values_.pop();
+            double result;
+
+            if (op.value == "+") result = a + b;
+            else if (op.value == "-") result = a - b;
+            else if (op.value == "*") result = a * b;
+            else if (op.value == "/") {
+                if (b == 0) throw ExpressionError("Division by zero.");
+                result = a / b;
+            } else if (op.value == "^") result = std::pow(a, b);
+            else throw ExpressionError("Unknown operator " + op.value);
+
+            values_.push(result);
+        }
+
+    public:
+        /**
+         * @brief Constructor.
+         */
+        Calculator() {
+            initializeFunctions();
+        }
+
+        /**
+         * @brief Parses and evaluates a mathematical expression.
+         * @param expression Input expression as a string.
+         * @return Result of the evaluation.
+         */
+        double evaluate(const std::string& expression) {
+            std::istringstream stream(expression);
+            std::string token;
+
+            while (stream >> token) {
+                if (std::isdigit(token[0]) || (token[0] == '-' && token.size() > 1)) {
+                    values_.push(std::stod(token));
+                } else if (functions_.count(token) || token == "(" || token == ")") {
+                    operators_.push({TokenType::Operator, token});
+                } else if (token == "+" || token == "-" || token == "*" || token == "/" || token == "^") {
+                    while (!operators_.empty() &&
+                           getPrecedence(token) <= getPrecedence(operators_.top().value)) {
+                        executeOperation();
+                    }
+                    operators_.push({TokenType::Operator, token});
+                } else {
+                    throw ExpressionError("Unknown token: " + token);
+                }
+            }
+
+            while (!operators_.empty()) {
+                executeOperation();
+            }
+
+            if (values_.size() != 1) throw ExpressionError("Expression resulted in multiple values.");
+            return values_.top();
+        }
+    };
+} // namespace MathCalc
 
 int main() {
-    cout << "For pi, enter 'p'. For the number e, use 'exp(1)'\n";
-    cout << "Enter the expression: ";
+    try {
+        std::cout << "Enter a mathematical expression:\n";
+        std::string input;
+        std::getline(std::cin, input);
 
-    stack<Digit> numbers;      // Stack to store numbers
-    stack<Digit> operations;   // Stack to store operations
-    Digit item;
-    char currentChar;
-    bool isNegativeAtStart = true;
+        MathCalc::Calculator calculator;
+        double result = calculator.evaluate(input);
 
-    while (true) {
-        currentChar = cin.peek();
-
-        if (currentChar == '\n') break;
-        if (currentChar == ' ') {
-            cin.ignore();
-            continue;
-        }
-
-        // Handle mathematical functions like sin, cos, tan, etc.
-        if (strchr("sctgea", currentChar)) {
-            string function;
-            cin >> function;
-
-            if (function == "sin") {
-                item.type = 's';
-            } else if (function == "cos") {
-                item.type = 'c';
-            } else if (function == "tan") {
-                item.type = 't';
-            } else if (function == "ctg") {
-                item.type = 'g';
-            } else if (function == "exp") {
-                item.type = 'e';
-            } else if (function == "abs") {
-                item.type = 'a';
-            } else {
-                cout << "\nInvalid function entered!\n";
-                return 0;
-            }
-
-            item.value = 0;
-            operations.push(item);
-            isNegativeAtStart = true;
-            continue;
-        }
-
-        // Handle numbers and the constant pi
-        if (isdigit(currentChar) || (currentChar == '-' && isNegativeAtStart)) {
-            if (currentChar == 'p') {
-                cin.ignore();
-                numbers.push({ '0', PI });
-            } else {
-                double value;
-                cin >> value;
-                numbers.push({ '0', value });
-            }
-            isNegativeAtStart = false;
-            continue;
-        }
-
-        // Handle mathematical operations
-        if (strchr("+-*/^", currentChar)) {
-            while (!operations.empty() && getOperationPriority(currentChar) <= getOperationPriority(operations.top().type)) {
-                if (!executeMathOperation(numbers, operations, item)) {
-                    return 0;
-                }
-            }
-            operations.push({ currentChar, 0 });
-            cin.ignore();
-            isNegativeAtStart = (currentChar == '-');
-            continue;
-        }
-
-        // Handle parentheses
-        if (currentChar == '(') {
-            operations.push({ '(', 0 });
-            cin.ignore();
-            isNegativeAtStart = true;
-            continue;
-        }
-
-        if (currentChar == ')') {
-            while (!operations.empty() && operations.top().type != '(') {
-                if (!executeMathOperation(numbers, operations, item)) {
-                    return 0;
-                }
-            }
-            if (!operations.empty()) operations.pop();
-            cin.ignore();
-            continue;
-        }
-
-        cout << "\nInvalid expression entered!\n";
-        return 0;
+        std::cout << "Result: " << std::fixed << std::setprecision(7) << result << "\n";
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << "\n";
+        return 1;
     }
 
-    while (!operations.empty()) {
-        if (!executeMathOperation(numbers, operations, item)) {
-            return 0;
-        }
-    }
-
-    cout << "Result: " << numbers.top().value << endl;
     return 0;
-}
-
-bool executeMathOperation(stack<Digit>& numbers, stack<Digit>& operations, Digit& item) {
-    if (numbers.empty() || operations.empty()) return false;
-
-    double a = numbers.top().value;
-    numbers.pop();
-
-    char operation = operations.top().type;
-    operations.pop();
-
-    double result;
-
-    switch (operation) {
-        case '+':
-            if (numbers.empty()) return false;
-            result = numbers.top().value + a;
-            numbers.pop();
-            break;
-        case '-':
-            if (numbers.empty()) return false;
-            result = numbers.top().value - a;
-            numbers.pop();
-            break;
-        case '*':
-            if (numbers.empty()) return false;
-            result = numbers.top().value * a;
-            numbers.pop();
-            break;
-        case '/':
-            if (a == 0) {
-                cerr << "\nError! Division by zero.\n";
-                return false;
-            }
-            if (numbers.empty()) return false;
-            result = numbers.top().value / a;
-            numbers.pop();
-            break;
-        case '^':
-            if (numbers.empty()) return false;
-            result = pow(numbers.top().value, a);
-            numbers.pop();
-            break;
-        case 's':
-            result = roundTo7Decimal(sin(a));
-            break;
-        case 'c':
-            result = roundTo7Decimal(cos(a));
-            break;
-        case 't':
-            if (roundTo7Decimal(cos(a)) == 0) {
-                cerr << "\nInvalid argument for tangent function!\n";
-                return false;
-            }
-            result = roundTo7Decimal(tan(a));
-            break;
-        case 'g':
-            if (roundTo7Decimal(sin(a)) == 0) {
-                cerr << "\nInvalid argument for cotangent function!\n";
-                return false;
-            }
-            result = roundTo7Decimal(1.0 / tan(a));
-            break;
-        case 'e':
-            result = exp(a);
-            break;
-        case 'a':
-            result = abs(a);
-            break;
-        default:
-            cerr << "\nError in operation!\n";
-            return false;
-    }
-
-    numbers.push({ '0', result });
-    return true;
-}
-
-int getOperationPriority(char operation) {
-    switch (operation) {
-        case '+':
-        case '-':
-            return 1;
-        case '*':
-        case '/':
-            return 2;
-        case '^':
-            return 3;
-        case 's':
-        case 'c':
-        case 't':
-        case 'g':
-        case 'e':
-        case 'a':
-            return 4;
-        default:
-            return 0;
-    }
 }
