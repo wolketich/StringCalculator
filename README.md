@@ -212,5 +212,5 @@ This project is open-source and licensed under the MIT License. See the `LICENSE
 
 ## Author
 
-Developed by **Vladislav Cernega** with an emphasis on robust error handling and precise operator precedence.
+Developed by **Vladislav Cernega**.
 
