@@ -28,22 +28,26 @@ namespace MathCalc {
      * @brief Mathematical constants and utility functions
      */
     namespace Constants {
-        constexpr double PI = std::acos(-1.0);       ///< Value of π (pi)
-        constexpr double E = std::exp(1.0);         ///< Value of Euler's number e
+    const double PI = std::acos(-1.0);  ///< Value of π (pi) at runtime
+    const double E = std::exp(1.0);    ///< Value of Euler's number e at runtime
 
-        /**
-         * @brief Utility function to round a double value to specified decimal places.
-         * @tparam Precision Number of decimal places to round to.
-         * @param value Input double value.
-         * @return Rounded value.
-         */
-        template <std::size_t Precision>
-        constexpr double roundTo(double value) {
-            static_assert(Precision > 0, "Precision must be greater than zero.");
-            constexpr double multiplier = std::pow(10.0, Precision);
-            return std::round(value * multiplier) / multiplier;
-        }
+    /**
+     * @brief Utility function to round a double value to specified decimal places.
+     * @tparam Precision Number of decimal places to round to.
+     * @param value Input double value.
+     * @return Rounded value.
+     */
+    template <std::size_t Precision>
+    constexpr double roundTo(double value) {
+        static_assert(Precision > 0, "Precision must be greater than zero.");
+        const double multiplier = 1.0 * []() {
+            double m = 1.0;
+            for (std::size_t i = 0; i < Precision; ++i) m *= 10;
+            return m;
+        }();
+        return std::round(value * multiplier) / multiplier;
     }
+}
 
     /**
      * @brief Token types used in expression parsing.
